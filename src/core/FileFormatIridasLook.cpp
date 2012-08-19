@@ -30,7 +30,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <cstring>
 #include <iterator>
 
-#include <tinyxml.h>
+#include <pugixml.hpp>
 
 #include <OpenColorIO/OpenColorIO.h>
 
@@ -166,8 +166,6 @@ OCIO_NAMESPACE_ENTER
         };
 
         typedef OCIO_SHARED_PTR<LocalCachedFile> LocalCachedFileRcPtr;
-        typedef OCIO_SHARED_PTR<TiXmlDocument> TiXmlDocumentRcPtr;
-
 
         class LocalFileFormat : public FileFormat
         {
@@ -201,28 +199,26 @@ OCIO_NAMESPACE_ENTER
         {
 
             // Get root element from XML file
-            TiXmlDocumentRcPtr doc;
-            TiXmlElement* rootElement;
+			pugi::xml_document doc;
+			pugi::xml_node rootElement;
 
             {
                 std::ostringstream rawdata;
                 rawdata << istream.rdbuf();
 
-                doc = TiXmlDocumentRcPtr(new TiXmlDocument());
-                doc->Parse(rawdata.str().c_str());
+				pugi::xml_parse_result result = doc.load(rawdata.str().c_str());
 
-                if(doc->Error())
+                if (!result)
                 {
                     std::ostringstream os;
                     os << "XML Parse Error. ";
-                    os << doc->ErrorDesc() << " (line ";
-                    os << doc->ErrorRow() << ", character ";
-                    os << doc->ErrorCol() << ")";
+                    os << result.description() << " (offset ";
+                    os << result.offset << ")";
                     throw Exception(os.str().c_str());
                 }
 
                 // Check for blank file
-                rootElement = doc->RootElement();
+                rootElement = doc.root();
                 if(!rootElement)
                 {
                     std::ostringstream os;
@@ -232,17 +228,17 @@ OCIO_NAMESPACE_ENTER
             }
 
             // Check root element is <look>
-            if(std::string(rootElement->Value()) != "look")
+            if(std::string(rootElement.name()) != "look")
             {
                 std::ostringstream os;
                 os << "Error loading .look LUT. ";
-                os << "Root element is type '" << rootElement->Value() << "', ";
+                os << "Root element is type '" << rootElement.name() << "', ";
                 os << "expected 'look'.";
                 throw Exception(os.str().c_str());
             }
 
             // Fail to load file if it contains a <mask> section
-            if(rootElement->FirstChild("mask") && rootElement->FirstChild("mask")->FirstChild())
+            if(rootElement.child("mask") && rootElement.child("mask").first_child())
             {
                 // If root element contains "mask" child, and it is
                 // not empty, throw exception
@@ -257,7 +253,7 @@ OCIO_NAMESPACE_ENTER
             // which we could use if available. Need to check
             // assumption that it is only written for 1D transforms,
             // and it matches the desired output
-            TiXmlNode* lutsection = rootElement->FirstChild("LUT");
+			pugi::xml_node lutsection = rootElement.child("LUT");
 
             if(!lutsection)
             {
@@ -272,7 +268,8 @@ OCIO_NAMESPACE_ENTER
 
             {
                 // Get size from <look><LUT><size>'123'</size></LUT></look>
-                TiXmlNode* elemsize = lutsection->FirstChild("size");
+				pugi::xml_node elemsize = lutsection.child("size");
+
                 if(!elemsize)
                 {
                     std::ostringstream os;
@@ -281,7 +278,7 @@ OCIO_NAMESPACE_ENTER
                     throw Exception(os.str().c_str());
                 }
 
-                std::string size_raw = std::string(elemsize->ToElement()->GetText());
+                std::string size_raw = elemsize.child_value();
                 std::string size_clean = pystring::strip(size_raw, "'\" "); // strip quotes and space
 
                 char* endptr = 0;
@@ -301,7 +298,7 @@ OCIO_NAMESPACE_ENTER
             // Grab raw 3D data
             std::vector<float> raw;
             {
-                TiXmlNode* dataelem = lutsection->FirstChild("data");
+				pugi::xml_node dataelem = lutsection.child("data");
                 if(!dataelem)
                 {
                     std::ostringstream os;
@@ -312,7 +309,7 @@ OCIO_NAMESPACE_ENTER
 
                 raw.reserve(3*(size_3d*size_3d*size_3d));
 
-                std::string what = dataelem->ToElement()->GetText();
+                std::string what = dataelem.child_value();
 
                 // Remove spaces, quotes and newlines
                 what = pystring::replace(what, " ", "");

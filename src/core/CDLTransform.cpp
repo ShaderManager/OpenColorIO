@@ -27,7 +27,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <fstream>
-#include <tinyxml.h>
+
+#include <pugixml.hpp>
 
 #include <OpenColorIO/OpenColorIO.h>
 
@@ -58,80 +59,46 @@ OCIO_NAMESPACE_ENTER
             " </ColorCorrection>";
         
         */
-        
-        // http://ticpp.googlecode.com/svn/docs/ticpp_8h-source.html#l01670
-        
-        void SetTiXmlText( TiXmlElement* element, const char * value)
-        {
-            if ( element->NoChildren() )
-            {
-                element->LinkEndChild( new TiXmlText( value ) );
-            }
-            else
-            {
-                if ( 0 == element->GetText() )
-                {
-                    element->InsertBeforeChild( element->FirstChild(), TiXmlText( value ) );
-                }
-                else
-                {
-                    // There already is text, so change it
-                    element->FirstChild()->SetValue( value );
-                }
-            }
-        }
-        
+              
         std::string BuildXML(const CDLTransform & cdl)
         {
-            TiXmlDocument doc;
-            
-            // TiXmlDeclaration * decl = new TiXmlDeclaration( "1.0", "", "" );
-            TiXmlElement * root = new TiXmlElement( "ColorCorrection" );
-            doc.LinkEndChild( root );
-            root->SetAttribute("id", cdl.getID());
-            
-            TiXmlElement * sop = new TiXmlElement( "SOPNode" );
-            root->LinkEndChild( sop );
-            
-            TiXmlElement * desc = new TiXmlElement( "Description" );
-            sop->LinkEndChild( desc );
-            SetTiXmlText(desc, cdl.getDescription());
-            
-            TiXmlElement * slope = new TiXmlElement( "Slope" );
-            sop->LinkEndChild( slope );
-            float slopeval[3];
-            cdl.getSlope(slopeval);
-            SetTiXmlText(slope, FloatVecToString(slopeval, 3).c_str());
-            
-            TiXmlElement * offset = new TiXmlElement( "Offset" );
-            sop->LinkEndChild( offset );
-            float offsetval[3];
-            cdl.getOffset(offsetval);
-            SetTiXmlText(offset, FloatVecToString(offsetval, 3).c_str());
-            
-            TiXmlElement * power = new TiXmlElement( "Power" );
-            sop->LinkEndChild( power );
-            float powerval[3];
-            cdl.getPower(powerval);
-            SetTiXmlText(power, FloatVecToString(powerval, 3).c_str());
-            
-            TiXmlElement * sat = new TiXmlElement( "SatNode" );
-            root->LinkEndChild( sat );
-            
-            TiXmlElement * saturation = new TiXmlElement( "Saturation" );
-            sat->LinkEndChild( saturation );
-            SetTiXmlText(saturation, FloatToString(cdl.getSat()).c_str());
-            
-            TiXmlPrinter printer;
-            printer.SetStreamPrinting();
-            doc.Accept( &printer );
-            return printer.Str();
+			pugi::xml_document doc;
+
+			pugi::xml_node root = doc.append_child("ColorCorrection");
+
+			root.attribute("id").set_value(cdl.getID());
+
+			pugi::xml_node sop = root.append_child("SOPNode");
+
+			sop.append_child("Description").append_child(pugi::node_pcdata).set_value(cdl.getDescription());
+
+			float slopeval[3];
+			cdl.getSlope(slopeval);
+			sop.append_child("Slope").append_child(pugi::node_pcdata).set_value(FloatVecToString(slopeval, 3).c_str());
+
+			float offsetval[3];
+			cdl.getOffset(offsetval);
+			sop.append_child("Offset").append_child(pugi::node_pcdata).set_value(FloatVecToString(offsetval, 3).c_str());
+
+			float powerval[3];
+			cdl.getPower(powerval);
+			sop.append_child("Power").append_child(pugi::node_pcdata).set_value(FloatVecToString(powerval, 3).c_str());
+
+			pugi::xml_node sat = root.append_child("SatNode");
+
+			sat.append_child("Saturation").append_child(pugi::node_pcdata).set_value(FloatToString(cdl.getSat()).c_str());
+
+			std::ostringstream ss;
+			doc.save(ss);
+
+			return ss.str();            
         }
     }
     
-    void LoadCDL(CDLTransform * cdl, TiXmlElement * root)
+    void LoadCDL(CDLTransform * cdl, pugi::xml_node& root)
     {
-        if(!cdl) return;
+        if(!cdl) 
+			return;
         
         if(!root)
         {
@@ -141,36 +108,38 @@ OCIO_NAMESPACE_ENTER
             throw Exception(os.str().c_str());
         }
         
-        if(std::string(root->Value()) != "ColorCorrection")
+        if(std::string(root.name()) != "ColorCorrection")
         {
             std::ostringstream os;
             os << "Error loading CDL xml. ";
-            os << "Root element is type '" << root->Value() << "', ";
+            os << "Root element is type '" << root.name() << "', ";
             os << "ColorCorrection expected.";
             throw Exception(os.str().c_str());
         }
         
-        TiXmlHandle handle( root );
-        
-        const char * id = root->Attribute("id");
-        if(!id) id = "";
+        const char * id = root.attribute("id").value();
+        if(!id) 
+			id = "";
         
         cdl->setID(id);
         
-        TiXmlElement* desc = handle.FirstChild( "SOPNode" ).FirstChild("Description").ToElement();
-        if(desc)
+		pugi::xml_node desc = root.child("SOPNode").child("Description");
+
+        if (desc)
         {
-            const char * text = desc->GetText();
-            if(text) cdl->setDescription(text);
+            const char * text = desc.first_child().value();
+            if(text) 
+				cdl->setDescription(text);
         }
         
         std::vector<std::string> lineParts;
         std::vector<float> floatArray;
         
-        TiXmlElement* slope = handle.FirstChild( "SOPNode" ).FirstChild("Slope").ToElement();
+		pugi::xml_node slope = root.child("SOPNode").child("Slope");
+
         if(slope)
         {
-            const char * text = slope->GetText();
+            const char * text = slope.child_value();
             if(text)
             {
                 pystring::split(pystring::strip(text), lineParts);
@@ -186,10 +155,10 @@ OCIO_NAMESPACE_ENTER
             }
         }
         
-        TiXmlElement* offset = handle.FirstChild( "SOPNode" ).FirstChild("Offset").ToElement();
+		pugi::xml_node offset = root.child("SOPNode").child("Offset");
         if(offset)
         {
-            const char * text = offset->GetText();
+            const char * text = offset.child_value();
             if(text)
             {
                 pystring::split(pystring::strip(text), lineParts);
@@ -205,10 +174,10 @@ OCIO_NAMESPACE_ENTER
             }
         }
         
-        TiXmlElement* power = handle.FirstChild( "SOPNode" ).FirstChild("Power").ToElement();
+		pugi::xml_node power = root.child("SOPNode").child("Power");
         if(power)
         {
-            const char * text = power->GetText();
+            const char * text = power.child_value();
             if(text)
             {
                 pystring::split(pystring::strip(text), lineParts);
@@ -224,10 +193,11 @@ OCIO_NAMESPACE_ENTER
             }
         }
         
-        TiXmlElement* sat = handle.FirstChild( "SatNode" ).FirstChild("Saturation").ToElement();
+		pugi::xml_node sat = root.child("SatNode").child("Saturation");
+
         if(sat)
         {
-            const char * text = sat->GetText();
+            const char * text = sat.child_value();
             if(text)
             {
                 float satval = 1.0f;
@@ -246,23 +216,21 @@ OCIO_NAMESPACE_ENTER
     
     
     
-    void GetCDLTransforms(CDLTransformMap & transforms,
-                          TiXmlElement * cccRootElement)
+    void GetCDLTransforms(CDLTransformMap & transforms, pugi::xml_node& cccRootElement)
     {
-        if(std::string(cccRootElement->Value()) != "ColorCorrectionCollection")
+        if(std::string(cccRootElement.name()) != "ColorCorrectionCollection")
         {
             std::ostringstream os;
             os << "GetCDLTransforms Error. ";
-            os << "Root element is type '" << cccRootElement->Value() << "', ";
+            os << "Root element is type '" << cccRootElement.name() << "', ";
             os << "ColorCorrectionCollection expected.";
             throw Exception(os.str().c_str());
         }
         
-        TiXmlNode * child = cccRootElement->FirstChild("ColorCorrection");
-        while(child)
+		for(pugi::xml_node child = cccRootElement.child("ColorCorrection"); child; child = child.next_sibling("ColorCorrection"))
         {
             CDLTransformRcPtr transform = CDLTransform::Create();
-            LoadCDL(transform.get(), child->ToElement());
+            LoadCDL(transform.get(), child);
             
             std::string id = transform->getID();
             if(id.empty())
@@ -284,8 +252,6 @@ OCIO_NAMESPACE_ENTER
             }
             
             transforms[id] = transform;
-            
-            child = child->NextSibling("ColorCorrection");
         }
     }
     
@@ -299,20 +265,20 @@ OCIO_NAMESPACE_ENTER
             throw Exception(os.str().c_str());
         }
         
-        TiXmlDocument doc;
-        doc.Parse(xml);
-        
-        if(doc.Error())
+		pugi::xml_document doc;
+
+		pugi::xml_parse_result result = doc.load(xml);
+
+        if (!result)
         {
             std::ostringstream os;
             os << "Error loading CDL xml. ";
-            os << doc.ErrorDesc() << " (line ";
-            os << doc.ErrorRow() << ", character ";
-            os << doc.ErrorCol() << ")";
+            os << result.description() << " (offset ";
+            os << result.offset << ")";
             throw Exception(os.str().c_str());
         }
         
-        if(!doc.RootElement())
+        if (!doc.root())
         {
             std::ostringstream os;
             os << "Error loading CDL xml, ";
@@ -320,7 +286,7 @@ OCIO_NAMESPACE_ENTER
             throw Exception(os.str().c_str());
         }
         
-        LoadCDL(cdl, doc.RootElement()->ToElement());
+        LoadCDL(cdl, doc.root());
     }
     
     CDLTransformRcPtr CDLTransform::Create()
@@ -393,21 +359,20 @@ OCIO_NAMESPACE_ENTER
             throw Exception(os.str().c_str());
         }
         
-        TiXmlDocument doc;
-        doc.Parse(xml.c_str());
+		pugi::xml_document doc;
+		pugi::xml_parse_result result = doc.load(xml.c_str());
         
-        if(doc.Error())
+        if (!result)
         {
             std::ostringstream os;
             os << "Error loading CDL xml from file '";
             os << src << "'. ";
-            os << doc.ErrorDesc() << " (line ";
-            os << doc.ErrorRow() << ", character ";
-            os << doc.ErrorCol() << ")";
+            os << result.description() << " (offset ";
+            os << result.offset << ")";
             throw Exception(os.str().c_str());
         }
         
-        if(!doc.RootElement())
+        if (!doc.root())
         {
             std::ostringstream os;
             os << "Error loading CDL xml from file '";
@@ -416,12 +381,12 @@ OCIO_NAMESPACE_ENTER
             throw Exception(os.str().c_str());
         }
         
-        std::string rootValue = doc.RootElement()->Value();
-        if(rootValue == "ColorCorrection")
+        std::string rootValue = doc.root().name();
+        if (rootValue == "ColorCorrection")
         {
             // Load a single ColorCorrection into the cache
             CDLTransformRcPtr cdl = CDLTransform::Create();
-            LoadCDL(cdl.get(), doc.RootElement()->ToElement());
+            LoadCDL(cdl.get(), doc.root());
             g_cache[GetCDLLocalCacheKey(src,cccid)] = cdl;
             return cdl;
         }
@@ -431,7 +396,7 @@ OCIO_NAMESPACE_ENTER
             // into the cache
             
             CDLTransformMap transforms;
-            GetCDLTransforms(transforms, doc.RootElement());
+            GetCDLTransforms(transforms, doc.root());
             
             if(transforms.empty())
             {

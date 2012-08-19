@@ -31,9 +31,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define INCLUDED_OCIO_CDLTRANSFORM_H
 
 #include <map>
-#include <tinyxml.h>
 
 #include <OpenColorIO/OpenColorIO.h>
+
+namespace pugixml
+{
+	class xml_node;
+}
 
 OCIO_NAMESPACE_ENTER
 {
@@ -42,11 +46,10 @@ OCIO_NAMESPACE_ENTER
     void ClearCDLTransformFileCache();
     
     void LoadCDL(CDLTransform * cdl, const char * xml);
-    void LoadCDL(CDLTransform * cdl, TiXmlElement * root);
+    void LoadCDL(CDLTransform * cdl, pugi::xml_node& root);
     
     // Get a map of transform cccid : cdl transform
-    void GetCDLTransforms(CDLTransformMap & transforms,
-                          TiXmlElement * cccroot);
+    void GetCDLTransforms(CDLTransformMap & transforms, pugi::xml_node& cccroot);
 }
 OCIO_NAMESPACE_EXIT
 

@@ -27,7 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <map>
-#include <tinyxml.h>
+#include <pugixml.hpp>
 
 #include <OpenColorIO/OpenColorIO.h>
 
@@ -55,8 +55,6 @@ OCIO_NAMESPACE_ENTER
         };
         
         typedef OCIO_SHARED_PTR<LocalCachedFile> LocalCachedFileRcPtr;
-        typedef OCIO_SHARED_PTR<TiXmlDocument> TiXmlDocumentRcPtr;
-        
         
         
         class LocalFileFormat : public FileFormat
@@ -96,20 +94,20 @@ OCIO_NAMESPACE_ENTER
             
             LocalCachedFileRcPtr cachedFile = LocalCachedFileRcPtr(new LocalCachedFile());
             
-            TiXmlDocumentRcPtr doc = TiXmlDocumentRcPtr(new TiXmlDocument());
-            doc->Parse(rawdata.str().c_str());
-            
-            if(doc->Error())
+			pugi::xml_document doc;
+			
+			pugi::xml_parse_result result = doc.load(rawdata.str().c_str());
+
+            if(!result)
             {
                 std::ostringstream os;
                 os << "XML Parse Error. ";
-                os << doc->ErrorDesc() << " (line ";
-                os << doc->ErrorRow() << ", character ";
-                os << doc->ErrorCol() << ")";
+                os << result.description() << " (offset ";
+                os << result.offset << ")";
                 throw Exception(os.str().c_str());
             }
             
-            TiXmlElement* rootElement = doc->RootElement();
+			pugi::xml_node rootElement = doc.root();
             if(!rootElement)
             {
                 std::ostringstream os;
@@ -117,11 +115,11 @@ OCIO_NAMESPACE_ENTER
                 throw Exception(os.str().c_str());
             }
             
-            if(std::string(rootElement->Value()) != "ColorCorrectionCollection")
+            if(std::string(rootElement.name()) != "ColorCorrectionCollection")
             {
                 std::ostringstream os;
                 os << "Error loading ccc xml. ";
-                os << "Root element is type '" << rootElement->Value() << "', ";
+                os << "Root element is type '" << rootElement.name() << "', ";
                 os << "ColorCorrectionCollection expected.";
                 throw Exception(os.str().c_str());
             }
